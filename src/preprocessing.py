@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime
 
 
 
@@ -33,9 +34,17 @@ def merge_data(players, appearances, valuations):
     ]]
 
     # -------------------------------
+    # Drop conflicting columns from players
+    # (real Transfermarkt data has these in both tables)
+    # -------------------------------
+    drop_cols = [c for c in ["current_club_name", "player_club_domestic_competition_id",
+                              "market_value_in_eur", "current_club_id"] if c in players.columns]
+    players_clean = players.drop(columns=drop_cols, errors="ignore")
+
+    # -------------------------------
     # Merge
     # -------------------------------
-    df = players.merge(stats, on="player_id", how="inner")
+    df = players_clean.merge(stats, on="player_id", how="inner")
     df = df.merge(valuations, on="player_id", how="inner")
 
     # -------------------------------
@@ -44,7 +53,8 @@ def merge_data(players, appearances, valuations):
     df["player_name"] = df["name"]
 
     df["date_of_birth"] = pd.to_datetime(df["date_of_birth"], errors="coerce")
-    df["age"] = 2024 - df["date_of_birth"].dt.year
+    current_year = datetime.now().year
+    df["age"] = current_year - df["date_of_birth"].dt.year
 
     # -------------------------------
     # Nationality
@@ -57,10 +67,17 @@ def merge_data(players, appearances, valuations):
         df["nationality"] = "Unknown"
 
     # -------------------------------
-    # Position safe
+    # Position safe + normalize names
     # -------------------------------
     if "position" not in df.columns:
         df["position"] = "Unknown"
+
+    # Transfermarkt uses "Attack" / "Midfield" — normalize
+    position_map = {
+        "Attack": "Forward",
+        "Midfield": "Midfielder",
+    }
+    df["position"] = df["position"].replace(position_map)
 
     # -------------------------------
     # Select columns
@@ -79,19 +96,54 @@ def merge_data(players, appearances, valuations):
     ]]
 
     # -------------------------------
-    # Rename columns
+    # Rename columns and Map League Names
     # -------------------------------
     df = df.rename(columns={
         "market_value_in_eur": "market_value",
         "player_club_domestic_competition_id": "league"
     })
 
+    league_map = {
+        "GB1": "Premier League",
+        "ES1": "La Liga",
+        "IT1": "Serie A",
+        "L1": "Bundesliga",
+        "FR1": "Ligue 1",
+        "PO1": "Liga Portugal",
+        "NL1": "Eredivisie",
+        "TR1": "Süper Lig",
+        "GR1": "Super League Greece",
+        "RU1": "Russian Premier League",
+        "BE1": "Jupiler Pro League",
+        "DK1": "Danish Superliga",
+        "SC1": "Scottish Premiership",
+        "UKR1": "Ukrainian Premier League",
+        "BRA1": "Campeonato Brasileiro",
+        "MLS1": "Major League Soccer",
+        "A1": "Austrian Bundesliga",
+        "ARG1": "Liga Profesional (Argentina)",
+        "AUS1": "A-League Men",
+        "C1": "Swiss Super League",
+        "COL1": "Categoría Primera A",
+        "JAP1": "J1 League",
+        "KR1": "SuperSport HNL (Croatia)",
+        "MEX1": "Liga MX",
+        "NO1": "Eliteserien",
+        "PL1": "Ekstraklasa",
+        "RO1": "Romanian SuperLiga",
+        "RSK1": "K League 1",
+        "SA1": "Saudi Pro League",
+        "SE1": "Allsvenskan",
+        "SER1": "Serbian SuperLiga",
+        "TS1": "Czech First League"
+    }
+    df["league"] = df["league"].replace(league_map)
+
     # -------------------------------
     # Clean
     # -------------------------------
     df = df.dropna()
-    df = df[df["minutes_played"] > 300]
-    df = df[df["age"] < 40]
+    df = df[df["minutes_played"] > 0] # Need > 0 to avoid division by zero in per90 stats
 
     return df
 
